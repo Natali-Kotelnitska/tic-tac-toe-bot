@@ -1,0 +1,29 @@
+# Ignore bundler config
+/.bundle
+
+# Ignore the Gemfile.lock
+Gemfile.lock
+
+# Ignore system-specific files
+*.gem
+*.rbc
+/.config
+/coverage/
+/InstalledFiles
+/pkg/
+/spec/reports/
+/spec/examples.txt
+/test/tmp/
+/test/version_tmp/
+/tmp/
+
+# Ignore .env file containing sensitive information
+.env
+
+# Ignore IDE or editor-specific files
+.idea/
+.vscode/
+
+# Ignore OS or system files
+.DS_Store
+Thumbs.db
