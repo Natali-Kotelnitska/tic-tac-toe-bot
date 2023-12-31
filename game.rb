@@ -47,7 +47,7 @@ class Game
     return true if [@board[0][2], @board[1][1], @board[2][0]].uniq.length == 1 && @board[0][2] != '-'
 
     # Перевірка, чи всі клітинки заповнені
-    return true unless @board.flatten.include?('-')
+    return :draw unless @board.flatten.include?('-')
 
     false
   end
