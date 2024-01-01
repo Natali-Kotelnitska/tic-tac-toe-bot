@@ -1,7 +1,10 @@
+# frozen_string_literal: true
+
 require 'dotenv/load'
 require 'telegram/bot'
 require_relative 'game'
 
+# Class representing a TelegramBot.
 class TelegramBot
   def initialize
     @game = nil
@@ -33,13 +36,16 @@ class TelegramBot
       if @game
         x, y = message.data.split(',').map(&:to_i)
         @game.make_move(x, y)
-        if @play_with_computer && @game.instance_variable_get(:@current_player) == @game.instance_variable_get(:@player)
-          x, y = @game.computer_move
-          @game.make_move(x, y)
-        end
         game_status = @game.game_over?
         if game_status
           handle_game_over(bot, message, game_status)
+        elsif @play_with_computer && !game_status
+          x, y = @game.computer_move
+          @game.make_move(x, y)
+          game_status = @game.game_over?
+          if game_status
+            handle_game_over(bot, message, game_status)
+          end
         end
       end
     end
@@ -61,18 +67,28 @@ class TelegramBot
     end
   end
 
-  # Methods for handling different message cases
-  def send_initial_message(bot, message)
-    user_full_name = "#{message.from.first_name} #{message.from.last_name}"
-    bot.api.send_message(chat_id: message.from.id, text: "Hello #{user_full_name} 👋")
-    bot.api.send_message(chat_id: message.chat.id, text: "I'm your Tic Tac Toe bot. You can play a game of Tic Tac Toe with a friend or with the computer. To start a new game, please choose 'With player' or 'With computer'.")
-    question = 'How do you want to play?'
-    answers = Telegram::Bot::Types::ReplyKeyboardMarkup.new(
+  def determine_winner
+    current_player = @game.instance_variable_get(:@current_player)
+    player = @game.instance_variable_get(:@player)
+    opponent = @game.instance_variable_get(:@opponent)
+    current_player == player ? opponent : player
+  end
+
+  def create_keyboard
+    Telegram::Bot::Types::ReplyKeyboardMarkup.new(
       keyboard: [
-        [{ text: 'With player' }, { text: 'With computer' }],
+        [{ text: 'With player' }, { text: 'With computer' }]
       ],
       one_time_keyboard: true
     )
+  end
+
+  def send_initial_message(bot, message)
+    user_full_name = "#{message.from.first_name} #{message.from.last_name}"
+    bot.api.send_message(chat_id: message.from.id, text: "Hello #{user_full_name} 👋")
+    bot.api.send_message(chat_id: message.chat.id, text: "I'm your Tic Tac Toe bot.")
+    question = 'How do you want to play?'
+    answers = create_keyboard
     bot.api.send_message(chat_id: message.chat.id, text: question, reply_markup: answers)
   end
 
@@ -80,7 +96,7 @@ class TelegramBot
     if game_status == :draw
       bot.api.send_message(chat_id: message.message.chat.id, text: "Game over. It's a draw.")
     else
-      winner = @game.instance_variable_get(:@current_player) == @game.instance_variable_get(:@player) ? @game.instance_variable_get(:@opponent) : @game.instance_variable_get(:@player)
+      winner = determine_winner
       bot.api.send_message(chat_id: message.message.chat.id, text: "Game over. The winner is #{winner}.")
     end
     send_new_game_button(bot, message)
