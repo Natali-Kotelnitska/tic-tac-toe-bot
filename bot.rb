@@ -1,14 +1,17 @@
 # frozen_string_literal: true
 
-require 'dotenv/load'
-require 'telegram/bot'
-require_relative 'game'
+require_relative 'board'
+require_relative 'keyboard_creator'
 
 # Class representing a TelegramBot.
 class TelegramBot
+  include KeyboardCreator
+
   def initialize
+    @board = Board.new
     @game = nil
     @play_with_computer = false
+    @difficulty_level = 0
   end
 
   def run
@@ -33,59 +36,78 @@ class TelegramBot
     when 'new_game'
       start_new_game(bot, message.message)
     else
-      if @game
-        x, y = message.data.split(',').map(&:to_i)
-        @game.make_move(x, y)
-        game_status = @game.game_over?
-        if game_status
-          handle_game_over(bot, message, game_status)
-        elsif @play_with_computer && !game_status
-          x, y = @game.computer_move
-          @game.make_move(x, y)
-          game_status = @game.game_over?
-          if game_status
-            handle_game_over(bot, message, game_status)
-          end
-        end
-      end
+      handle_game_move(bot, message)
     end
   end
+
+  def handle_game_move(bot, message)
+    return unless @game
+
+    x, y = message.data.split(',').map(&:to_i)
+    @game.make_move(x, y)
+    game_status = @game.game_over?
+
+    if game_status
+      handle_game_over(bot, message, game_status)
+    elsif @play_with_computer && !game_status
+      handle_computer_move(bot, message)
+    end
+  end
+
+  def handle_computer_move(bot, message)
+    x, y = @game.computer_move(@difficulty_level)
+    @game.make_move(x, y)
+    game_status = @game.game_over?
+
+    handle_game_over(bot, message, game_status) if game_status
+  end
+
+  MESSAGE_ACTIONS = {
+    '/start' => :send_initial_message,
+    'With player' => :handle_with_player_message,
+    'With computer' => :send_difficulty_level_message,
+    'Easy' => :handle_difficulty_level1,
+    'Medium' => :handle_difficulty_level4,
+    'Hard' => :handle_difficulty_level6,
+    '/stop' => :handle_stop_message
+  }.freeze
 
   def handle_text_message(bot, message)
-    case message.text
-    when '/start'
-      send_initial_message(bot, message)
-    when 'With player'
-      @play_with_computer = false
-      start_new_game(bot, message)
-    when 'With computer'
-      @play_with_computer = true
-      start_new_game(bot, message)
-    when '/stop'
-      @game = nil
-      bot.api.send_message(chat_id: message.chat.id, text: 'Game stopped.')
+    action = MESSAGE_ACTIONS[message.text]
+    send(action, bot, message) if action
+  end
+
+  [1, 4, 6].each do |level|
+    define_method("handle_difficulty_level#{level}") do |bot, message|
+      handle_difficulty_level(level, bot, message)
     end
   end
 
-  def determine_winner
-    current_player = @game.instance_variable_get(:@current_player)
-    player = @game.instance_variable_get(:@player)
-    opponent = @game.instance_variable_get(:@opponent)
-    current_player == player ? opponent : player
+  def handle_with_player_message(bot, message)
+    @play_with_computer = false
+    start_new_game(bot, message)
   end
 
-  def create_keyboard
-    Telegram::Bot::Types::ReplyKeyboardMarkup.new(
-      keyboard: [
-        [{ text: 'With player' }, { text: 'With computer' }]
-      ],
-      one_time_keyboard: true
-    )
+  def send_difficulty_level_message(bot, message)
+    question = 'Choose the difficulty level:'
+    answers = create_difficulty_level_keyboard
+    bot.api.send_message(chat_id: message.chat.id, text: question, reply_markup: answers)
+  end
+
+  def handle_stop_message(bot, message)
+    @game = nil
+    bot.api.send_message(chat_id: message.chat.id, text: 'Game stopped.')
+    bot.api.send_message(chat_id: message.chat.id, text: "Thank you for playing! Bye, #{message.from.first_name}")
+  end
+
+  def handle_difficulty_level(difficulty_level, bot, message)
+    @difficulty_level = difficulty_level
+    @play_with_computer = true
+    start_new_game(bot, message)
   end
 
   def send_initial_message(bot, message)
-    user_full_name = "#{message.from.first_name} #{message.from.last_name}"
-    bot.api.send_message(chat_id: message.from.id, text: "Hello #{user_full_name} 👋")
+    bot.api.send_message(chat_id: message.from.id, text: "Hello, #{message.from.first_name} 👋")
     bot.api.send_message(chat_id: message.chat.id, text: "I'm your Tic Tac Toe bot.")
     question = 'How do you want to play?'
     answers = create_keyboard
@@ -96,20 +118,11 @@ class TelegramBot
     if game_status == :draw
       bot.api.send_message(chat_id: message.message.chat.id, text: "Game over. It's a draw.")
     else
-      winner = determine_winner
+      winner = @game.determine_winner
       bot.api.send_message(chat_id: message.message.chat.id, text: "Game over. The winner is #{winner}.")
     end
     send_new_game_button(bot, message)
     @game = nil
-  end
-
-  def send_new_game_button(bot, message)
-    markup = Telegram::Bot::Types::InlineKeyboardMarkup.new(
-      inline_keyboard: [
-        [Telegram::Bot::Types::InlineKeyboardButton.new(text: 'Start New Game', callback_data: 'new_game')]
-      ]
-    )
-    bot.api.send_message(chat_id: message.message.chat.id, text: 'Click the button below to start a new game, or type /start to start over.', reply_markup: markup)
   end
 
   def start_new_game(bot, message)

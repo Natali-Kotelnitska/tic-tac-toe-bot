@@ -1,47 +1,53 @@
 # frozen_string_literal: true
 
+require_relative 'board'
+require_relative 'players'
 # Class representing a Tic Tac Toe game.
 class Game
+  include Players
+
   def initialize(bot, message)
-    @board = Array.new(3) { Array.new(3, '-') }
+    @board_instance = Board.new
+    @board = @board_instance.board
     @message = message
     @bot = bot
-    @player = '🎅' # Санта
-    @opponent = '🧛' # Вампір
+    @player = PLAYER
+    @opponent = OPPONENT
     @current_player = @player
   end
 
   def play
-    print_board
+    @board_instance.print_board(@current_player, @bot, @message)
   end
 
   def make_move(x, y)
     @board[x][y] = @current_player
     switch_player
-    print_board
+    play
   end
 
-  def minimax(board, depth, is_maximizing)
+  def minimax(board, depth, is_maximizing, level)
     winner = check_winner(board)
 
     return 10 - depth if winner == :opponent
     return -10 + depth if winner == :player
     return 0 if winner == :draw
+    return 0 if depth == level
 
     best_score = is_maximizing ? -Float::INFINITY : Float::INFINITY
     current_player = is_maximizing ? @opponent : @player
     next_maximizing = !is_maximizing
 
-    evaluate_board(board, current_player, depth, next_maximizing, best_score)
+    evaluate_board(board, current_player, depth, next_maximizing, best_score, level)
   end
 
-  def evaluate_board(board, current_player, depth, next_maximizing, best_score)
+  def evaluate_board(board, current_player, depth, next_maximizing, best_score, level)
     board.each_with_index do |row, i|
       row.each_with_index do |cell, j|
         next unless cell == '-'
 
         board[i][j] = current_player
-        score = minimax(board, depth + 1, next_maximizing)
+        score = minimax(board, depth + 1, next_maximizing, level)
         board[i][j] = '-'
 
         best_score = next_maximizing ? [score, best_score].min : [score, best_score].max
@@ -50,7 +56,7 @@ class Game
     best_score
   end
 
-  def computer_move
+  def computer_move(level)
     best_score = -Float::INFINITY
     move = nil
 
@@ -58,7 +64,7 @@ class Game
       row.each_with_index do |cell, j|
         if cell == '-'
           @board[i][j] = @opponent
-          score = minimax(@board, 0, false)
+          score = minimax(@board, 0, false, level)
           @board[i][j] = '-'
           if score > best_score
             best_score = score
@@ -97,6 +103,10 @@ class Game
     nil
   end
 
+  def determine_winner
+    @current_player == @player ? @opponent : @player
+  end
+
   def game_over?
     winner = check_winner(@board)
     return true if [:player, :opponent].include?(winner)
@@ -106,15 +116,6 @@ class Game
   end
 
   private
-
-  def print_board
-    markup = Telegram::Bot::Types::InlineKeyboardMarkup.new(inline_keyboard: @board.map.with_index do |row, i|
-      row.map.with_index do |cell, j|
-        Telegram::Bot::Types::InlineKeyboardButton.new(text: cell, callback_data: "#{i},#{j}")
-      end
-    end)
-    @bot.api.send_message(chat_id: @message.chat.id, text: "Player's #{@current_player} turn", reply_markup: markup)
-  end
 
   def switch_player
     @current_player = @current_player == @player ? @opponent : @player
