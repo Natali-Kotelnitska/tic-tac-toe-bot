@@ -1,4 +1,4 @@
-# Tic Tac Tie Telegram Bot
+# Tic Tac Toe Telegram Bot
 
 Welcome to the Tic Tac Tie Telegram Bot repository! This bot allows you to enjoy the classic game of Tic Tac Toe with your friends or challenge the bot for a quick and entertaining match.
 
